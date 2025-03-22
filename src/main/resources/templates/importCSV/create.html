@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <div th:insert="~{/general/head.html}"></div>
+    <meta name="_csrf" content="${_csrf.token}"/>
+    <meta name="_csrf_header" content="${_csrf.headerName}"/>
+    
+    <!-- Styles nécessaires -->
+    <link rel="stylesheet" th:href="@{/css/bootstrap-wysihtml5.css}"/>
+    <link rel="stylesheet" href="https://unpkg.com/dropzone@5/dist/min/dropzone.min.css" type="text/css"/>
+    <link th:href="@{/css/style.min.css}" rel="stylesheet">
+    <link th:href="@{/css/pages/inbox.css}" rel="stylesheet">
+
+    <!-- Support IE8 -->
+    <!--[if lt IE 9]>
+    <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+    <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+    <![endif]-->
+</head>
+
+<body class="skin-blue fixed-layout">
+    <!-- Preloader -->
+    <div class="preloader">
+        <div class="loader">
+            <div class="loader__figure"></div>
+            <p class="loader__label">CRM</p>
+        </div>
+    </div>
+
+    <!-- Main wrapper -->
+    <div id="main-wrapper">
+        <!-- Header -->
+        <div th:insert="~{/general/header.html}"></div>
+        
+        <!-- Left Sidebar -->
+        <div th:insert="~{/general/left-sidebar.html}"></div>
+
+        <!-- Page wrapper -->
+        <div class="page-wrapper">
+            <div class="container-fluid">
+                <!-- Breadcrumb -->
+                <div th:insert="~{/general/page-titles.html}"></div>
+
+                <!-- Page Content -->
+                <div class="row">
+                    <div class="col-lg-12">
+                        <div class="card">
+                            <div class="card-body">
+                                <h4 class="card-title">Importer des données via CSV</h4>
+
+                                <!-- Messages de succès ou d'erreur -->
+                                <div th:if="${mess}" class="alert alert-success" th:text="${mess}"></div>
+                                <div th:if="${error}" class="alert alert-danger" th:text="${error}"></div>
+
+                                <!-- Formulaire d'importation CSV -->
+                                <form th:action="@{'/csv-import/customers'}" enctype="multipart/form-data" method="post">
+                                    <label class="m-t-20" for="csvFile">Customer CSV :</label>
+                                    <div class="input-group">
+                                        <input type="file" id="csvFile" name="file" class="form-control" accept=".csv" required />
+                                    </div>
+
+                                    <button type="submit" class="btn btn-primary m-t-20">Importer</button>
+                                </form>
+                                <hr>
+
+                                <!-- Formulaire d'importation CSV -->
+                                <form th:action="@{'/csv-import/users'}" enctype="multipart/form-data" method="post">
+                                    <label class="m-t-20" for="csvFile">Users CSV :</label>
+                                    <div class="input-group">
+                                        <input type="file" id="csvFile" name="file" class="form-control" accept=".csv" required />
+                                    </div>
+
+                                    <button type="submit" class="btn btn-primary m-t-20">Importer</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div th:insert="~{/general/footer.html}"></div>
+    </div>
+
+    <!-- Scripts -->
+    <script th:src="@{/js/library/jquery-3.2.1.min.js}"></script>
+    <script th:src="@{/js/library/popper.min.js}"></script>
+    <script th:src="@{/js/library/bootstrap.min.js}"></script>
+    <script th:src="@{/js/library/perfect-scrollbar.jquery.min.js}"></script>
+    <script th:src="@{/js/library/waves.js}"></script>
+    <script th:src="@{/js/library/sidebarmenu.js}"></script>
+    <script th:src="@{/js/library/sticky-kit.min.js}"></script>
+    <script th:src="@{/js/library/jquery.sparkline.min.js}"></script>
+    <script th:src="@{/js/library/custom.min.js}"></script>
+    <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
+    <script th:src="@{/js/general-dropzone.js}" type="text/javascript"
+            th:data-csrf-token="${_csrf.token}" th:data-csrf-header="${_csrf.headerName}"></script>
+
+    <script>
+        Dropzone.autoDiscover = false;
+        $(document).ready(function() {
+            var myDropzone = new Dropzone("#my-dropzone", {
+                url: "/file/upload", // À ajuster selon votre endpoint d'upload
+                paramName: "file",
+                maxFilesize: 10, // Taille max en MB
+                acceptedFiles: ".csv,.pdf,.doc,.docx", // Types de fichiers acceptés
+                addRemoveLinks: true,
+                init: function() {
+                    this.on("success", function(file, response) {
+                        // Ajouter les fichiers uploadés au champ hidden
+                        let allFiles = $("#allFiles").val();
+                        if (allFiles) {
+                            allFiles += "," + response.fileId;
+                        } else {
+                            allFiles = response.fileId;
+                        }
+                        $("#allFiles").val(allFiles);
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

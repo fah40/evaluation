@@ -10,6 +10,11 @@ public class GlobalController {
         return "coming-soon";
     }
 
+    @GetMapping("/import")
+    public String importCSV(){
+        return "importCSV/create";
+    }
+
     @GetMapping("/google-error")
     public String unauthorizedGoogleErrorPage(){
         return "google-error";

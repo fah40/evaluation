@@ -25,6 +25,22 @@
                         </li>
                     </ul>
                 </li>
+                <li class="nav-small-cap" th:if="${#authorization.expression('hasRole(''ROLE_MANAGER'')')}">--- Reset database</li>
+                <li th:if="${#authorization.expression('hasRole(''ROLE_MANAGER'')')}">
+                    <a class=" waves-effect waves-dark" href="/reset/tables">
+                        <i class="fas fa-cut"></i><i class="fas fa-database"></i>
+                        <span class="hide-menu">Reset DB</span>
+                    </a>
+                </li>
+
+                <li class="nav-small-cap" th:if="${#authorization.expression('hasRole(''ROLE_MANAGER'')')}">--- Import CSV</li>
+                <li th:if="${#authorization.expression('hasRole(''ROLE_MANAGER'')')}">
+                    <a class=" waves-effect waves-dark" href="/import">
+                        </i><i class="fas fa-file-import"></i>
+                        <span class="hide-menu">Import data</span>
+                    </a>
+                </li>
+
                 <li class="nav-small-cap">--- Settings</li>
                 <li>
                     <a class="has-arrow waves-effect waves-dark" href="javascript:void(0)">
