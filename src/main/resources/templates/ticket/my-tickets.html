@@ -86,6 +86,7 @@
                                         <th>Customer</th>
                                         <th>Assigned Employee</th>
                                         <th>Show Full Details</th>
+                                        <th>Amount</th>
                                         <th>Edit</th>
                                         <th>Delete</th>
                                     </tr>
@@ -99,6 +100,7 @@
                                         <td th:text="${ticket.customer.name}"></td>
                                         <td th:text="${ticket.employee.username}"></td>
                                         <td><a th:href="${home + 'employee/ticket/show-ticket/' + ticket.ticketId}"><i class="fas fa-eye"></i></a></td>
+                                        <td th:text="${ticketExpenses[ticket.ticketId] != null ? ticketExpenses[ticket.ticketId] : 'N/A'}"></td>
                                         <td><a th:href="${home + 'employee/ticket/update-ticket/' + ticket.ticketId}"><i class="fas fa-edit"></i></a></td>
                                         <td>
                                             <form th:action="${home + 'employee/ticket/delete-ticket/' + ticket.ticketId}" method="post">

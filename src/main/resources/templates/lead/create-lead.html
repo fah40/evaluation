@@ -102,6 +102,14 @@
                                     <span class="text-danger font-weight-bold" th:if="${#fields.hasErrors('status')}" th:errors="*{status}"></span>
                                 </div>
 
+                                <!-- Nouveau champ Montant -->
+                                <label class="m-t-20" for="amount">Amount:</label>
+                                <div class="input-group">
+                                    <input type="number" step="0.01" id="amount" name="amount" class="form-control" required>
+                                </div>
+                                <div class="input-group">
+                                    <span class="text-danger font-weight-bold" th:if="${param.errorAmount != null}" th:text="${param.errorAmount}"></span>
+                                </div>
 
                                 <label class="m-t-20" for="employeeId">Assign Employee:</label>
                                 <div class="input-group">
@@ -154,6 +162,37 @@
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
                             <button type="button" class="btn btn-primary" id="create" >Create</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modale de confirmation -->
+            <div class="modal fade" id="thresholdModal" tabindex="-1" role="dialog" aria-labelledby="thresholdModalLabel"       aria-hidden="true" th:if="${showModal != null and showModal}">
+                <div class="modal-dialog" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="thresholdModalLabel">Budget Threshold Warning</h5>
+                            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                                <span aria-hidden="true">×</span>
+                            </button>
+                        </div>
+                        <div class="modal-body">
+                            <p th:text="${thresholdWarning}"></p>
+                        </div>
+                        <div class="modal-footer">
+                            <form th:action="@{/employee/lead/confirm-create-lead}" method="post">
+                                <input type="hidden" name="name" th:value="${lead.name}" />
+                                <input type="hidden" name="phone" th:value="${lead.phone}" />
+                                <input type="hidden" name="status" th:value="${lead.status}" />
+                                <input type="hidden" name="customerId" th:value="${customerId}" />
+                                <input type="hidden" name="employeeId" th:value="${employeeId}" />
+                                <input type="hidden" name="amount" th:value="${amount}" />
+                                <input type="hidden" name="allFiles" th:value="${allFiles}" />
+                                <input type="hidden" name="folderId" th:value="${folderId}" />
+                                <button type="submit" name="confirm" value="true" class="btn btn-primary">Yes</button>
+                                <button type="submit" name="confirm" value="false" class="btn btn-secondary">No</button>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -229,6 +268,17 @@
     var driveFolderId = "";
 
     /*]]>*/
+</script>
+
+<script th:inline="javascript">
+    $(document).ready(function() {
+        $('.textarea_editor').wysihtml5();
+        
+        // Afficher la modale si nécessaire
+        if ([[${showModal}]] === true) {
+            $('#thresholdModal').modal('show');
+        }
+    });
 </script>
 <script th:src="@{/js/general-dropzone.js}" type="text/javascript"
         th:data-csrf-token="${_csrf.token}" th:data-csrf-header="${_csrf.headerName}"></script>

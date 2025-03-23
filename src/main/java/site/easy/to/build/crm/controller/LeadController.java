@@ -16,6 +16,8 @@ import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
 import site.easy.to.build.crm.entity.*;
 import site.easy.to.build.crm.entity.settings.LeadEmailSettings;
 import site.easy.to.build.crm.google.model.calendar.EventDisplay;
@@ -25,7 +27,10 @@ import site.easy.to.build.crm.google.service.acess.GoogleAccessService;
 import site.easy.to.build.crm.google.service.calendar.GoogleCalendarApiService;
 import site.easy.to.build.crm.google.service.drive.GoogleDriveApiService;
 import site.easy.to.build.crm.google.service.gmail.GoogleGmailApiService;
+import site.easy.to.build.crm.service.budget.FinanceService;
+import site.easy.to.build.crm.service.config.ConfigurationService;
 import site.easy.to.build.crm.service.customer.CustomerService;
+import site.easy.to.build.crm.service.depense.DepenseService;
 import site.easy.to.build.crm.service.drive.GoogleDriveFileService;
 import site.easy.to.build.crm.service.file.FileService;
 import site.easy.to.build.crm.service.lead.LeadActionService;
@@ -39,6 +44,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.security.GeneralSecurityException;
 import java.time.LocalDateTime;
+import java.sql.Date;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -60,12 +66,19 @@ public class LeadController {
     private final LeadEmailSettingsService leadEmailSettingsService;
     private final GoogleGmailApiService googleGmailApiService;
     private final EntityManager entityManager;
+    private final DepenseService depenseService;
+    private final FinanceService financeService; // Nouveau
+    private final ConfigurationService configurationService; // Nouveau
 
     @Autowired
-    public LeadController(LeadService leadService, AuthenticationUtils authenticationUtils, UserService userService, CustomerService customerService,
-                          LeadActionService leadActionService, GoogleCalendarApiService googleCalendarApiService, FileService fileService,
-                          GoogleDriveApiService googleDriveApiService, GoogleDriveFileService googleDriveFileService, FileUtil fileUtil,
-                          LeadEmailSettingsService leadEmailSettingsService, GoogleGmailApiService googleGmailApiService, EntityManager entityManager) {
+    public LeadController(LeadService leadService, AuthenticationUtils authenticationUtils, UserService userService, 
+                          CustomerService customerService, LeadActionService leadActionService, 
+                          GoogleCalendarApiService googleCalendarApiService, FileService fileService,
+                          GoogleDriveApiService googleDriveApiService, GoogleDriveFileService googleDriveFileService, 
+                          FileUtil fileUtil, LeadEmailSettingsService leadEmailSettingsService, 
+                          GoogleGmailApiService googleGmailApiService, EntityManager entityManager, 
+                          DepenseService depenseService, FinanceService financeService, 
+                          ConfigurationService configurationService) {
         this.leadService = leadService;
         this.authenticationUtils = authenticationUtils;
         this.userService = userService;
@@ -79,6 +92,9 @@ public class LeadController {
         this.leadEmailSettingsService = leadEmailSettingsService;
         this.googleGmailApiService = googleGmailApiService;
         this.entityManager = entityManager;
+        this.depenseService = depenseService;
+        this.financeService = financeService;
+        this.configurationService = configurationService;
     }
 
     @GetMapping("/show/{id}")
@@ -127,7 +143,13 @@ public class LeadController {
     public String showAssignedEmployeeLeads(Authentication authentication, Model model) {
         int userId = authenticationUtils.getLoggedInUserId(authentication);
         List<Lead> leads = leadService.findAssignedLeads(userId);
+        Map<Integer, Double> leadExpenses = new HashMap<>();
+        for (Lead lead : leads) {
+            Depense depense = depenseService.findByLead(lead);
+            leadExpenses.put(lead.getLeadId(), depense != null ? depense.getValue() : null);
+        }
         model.addAttribute("leads", leads);
+        model.addAttribute("leadExpenses", leadExpenses);
         return "lead/show-my-leads";
     }
 
@@ -135,14 +157,26 @@ public class LeadController {
     public String showCreatedEmployeeLeads(Authentication authentication, Model model) {
         int userId = authenticationUtils.getLoggedInUserId(authentication);
         List<Lead> leads = leadService.findCreatedLeads(userId);
+        Map<Integer, Double> leadExpenses = new HashMap<>();
+        for (Lead lead : leads) {
+            Depense depense = depenseService.findByLead(lead);
+            leadExpenses.put(lead.getLeadId(), depense != null ? depense.getValue() : null);
+        }
         model.addAttribute("leads", leads);
+        model.addAttribute("leadExpenses", leadExpenses);
         return "lead/show-my-leads";
     }
 
     @GetMapping("/manager/all-leads")
     public String showAllLeads(Model model) {
         List<Lead> leads = leadService.findAll();
+        Map<Integer, Double> leadExpenses = new HashMap<>();
+        for (Lead lead : leads) {
+            Depense depense = depenseService.findByLead(lead);
+            leadExpenses.put(lead.getLeadId(), depense != null ? depense.getValue() : null);
+        }
         model.addAttribute("leads", leads);
+        model.addAttribute("leadExpenses", leadExpenses);
         return "lead/show-my-leads";
     }
 
@@ -167,16 +201,24 @@ public class LeadController {
     @PostMapping("/create")
     public String createLead(@ModelAttribute("lead") @Validated Lead lead, BindingResult bindingResult,
                              @RequestParam("customerId") int customerId, @RequestParam("employeeId") int employeeId,
-                             Authentication authentication, @RequestParam("allFiles")@Nullable String files,
-                             @RequestParam("folderId") @Nullable String folderId, Model model) throws JsonProcessingException {
+                             @RequestParam(value = "amount", required = false) Double amount,
+                             Authentication authentication, @RequestParam("allFiles") @Nullable String files,
+                             @RequestParam("folderId") @Nullable String folderId, Model model,
+                             RedirectAttributes redirectAttributes) throws JsonProcessingException {
 
         int userId = authenticationUtils.getLoggedInUserId(authentication);
         User manager = userService.findById(userId);
-        if(manager.isInactiveUser()) {
+        if (manager == null || manager.isInactiveUser()) {
             return "error/account-inactive";
         }
 
-        if(bindingResult.hasErrors()) {
+        // Validation du montant (si fourni)
+        if (amount != null && amount <= 0) {
+            redirectAttributes.addAttribute("errorAmount", "Amount must be greater than 0");
+            return "redirect:/employee/lead/create";
+        }
+
+        if (bindingResult.hasErrors()) {
             User user = userService.findById(userId);
             populateModelAttributes(model, authentication, user);
             return "lead/create-lead";
@@ -184,9 +226,38 @@ public class LeadController {
 
         User employee = userService.findById(employeeId);
         Customer customer = customerService.findByCustomerId(customerId);
-        if(AuthorizationUtil.hasRole(authentication, "ROLE_EMPLOYEE") && (employee.getId() != userId)) {
+        if (AuthorizationUtil.hasRole(authentication, "ROLE_EMPLOYEE") && (employee.getId() != userId)) {
             return "error/500";
         }
+        Double newTotalDepense = null;
+        Double threshold = null;
+
+        // Vérification du seuil de budget si un montant est fourni
+        if (amount != null) {
+            Double totalBudget = financeService.calculateTotalBudgetByCustomer(customerId);
+            Double totalDepense = financeService.calculateTotalDepenseByCustomer(customerId);
+            newTotalDepense = totalDepense + amount;
+            int percentageThreshold = configurationService.getPercentageByType("budget_threshold");
+            threshold = totalBudget * (percentageThreshold / 100.0);
+
+            if (newTotalDepense > threshold) {
+                User user = userService.findById(userId);
+                populateModelAttributes(model, authentication, user);
+                model.addAttribute("lead", lead);
+                model.addAttribute("customerId", customerId);
+                model.addAttribute("employeeId", employeeId);
+                model.addAttribute("amount", amount);
+                model.addAttribute("allFiles", files);
+                model.addAttribute("folderId", folderId);
+                model.addAttribute("thresholdWarning",
+                    "Warning: The total expenses (" + newTotalDepense + ") will exceed or equal " +
+                    percentageThreshold + "% of the budget (" + threshold + "). Do you want to proceed?");
+                model.addAttribute("showModal", true);
+                return "lead/create-lead";
+            }
+        }
+
+        // Si pas de dépassement ou pas de montant, procéder à la création
         lead.setCustomer(customer);
         lead.setEmployee(employee);
         lead.setManager(manager);
@@ -194,8 +265,7 @@ public class LeadController {
         lead.setCreatedAt(LocalDateTime.now());
 
         ObjectMapper objectMapper = new ObjectMapper();
-        List<Attachment> allFiles = objectMapper.readValue(files, new TypeReference<List<Attachment>>() {
-        });
+        List<Attachment> allFiles = objectMapper.readValue(files, new TypeReference<List<Attachment>>() {});
 
         if (!(authentication instanceof UsernamePasswordAuthenticationToken) && googleDriveApiService != null) {
             OAuthUser oAuthUser = authenticationUtils.getOAuthUserFromAuthentication(authentication);
@@ -215,10 +285,117 @@ public class LeadController {
             fileUtil.saveGoogleDriveFiles(authentication, allFiles, folderId, createdLead);
         }
 
+        // Création de la dépense associée si un montant est fourni
+        if (amount != null) {
+            Depense depense = new Depense();
+            depense.setLead(createdLead);
+            depense.setTicket(null);
+            depense.setDate(Date.valueOf(LocalDateTime.now().toLocalDate()));
+            depense.setValue(amount);
+            try {
+                depenseService.save(depense);
+
+                // Mettre à jour le statut du dernier budget
+                int percentageThreshold = configurationService.getPercentageByType("budget_threshold");
+                financeService.updateThresholdExceededStatus(customerId, percentageThreshold);
+            } catch (IllegalArgumentException e) {
+                redirectAttributes.addAttribute("error", "Error creating expense: " + e.getMessage());
+                return "redirect:/employee/lead/create";
+            }
+        }
+
+        if (newTotalDepense == threshold) {
+            redirectAttributes.addFlashAttribute("mess", "the budget alert rate is reached");
+        }else{
+            redirectAttributes.addFlashAttribute("mess", "Ticket and expense created successfully!");
+        }
+
         if (lead.getStatus().equals("meeting-to-schedule")) {
             return "redirect:/employee/calendar/create-event?leadId=" + lead.getLeadId();
         }
-        if(AuthorizationUtil.hasRole(authentication, "ROLE_MANAGER")) {
+        if (AuthorizationUtil.hasRole(authentication, "ROLE_MANAGER")) {
+            return "redirect:/employee/lead/created-leads";
+        }
+        return "redirect:/employee/lead/assigned-leads";
+    }
+
+    @PostMapping("/confirm-create-lead")
+    public String confirmCreateLead(@ModelAttribute("lead") Lead lead,
+                                    @RequestParam("customerId") int customerId,
+                                    @RequestParam("employeeId") int employeeId,
+                                    @RequestParam(value = "amount", required = false) Double amount,
+                                    @RequestParam("allFiles") @Nullable String files,
+                                    @RequestParam("folderId") @Nullable String folderId,
+                                    @RequestParam("confirm") boolean confirm,
+                                    Authentication authentication,
+                                    RedirectAttributes redirectAttributes) throws JsonProcessingException {
+
+        int userId = authenticationUtils.getLoggedInUserId(authentication);
+        User manager = userService.findById(userId);
+        if (manager == null || manager.isInactiveUser()) {
+            return "error/account-inactive";
+        }
+
+        if (!confirm) {
+            redirectAttributes.addFlashAttribute("mess", "Lead creation cancelled due to budget threshold.");
+            return "redirect:/employee/lead/create";
+        }
+
+        User employee = userService.findById(employeeId);
+        Customer customer = customerService.findByCustomerId(customerId);
+        if (employee == null || customer == null) {
+            return "error/500";
+        }
+
+        lead.setCustomer(customer);
+        lead.setEmployee(employee);
+        lead.setManager(manager);
+        lead.setGoogleDriveFolderId(folderId);
+        lead.setCreatedAt(LocalDateTime.now());
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        List<Attachment> allFiles = objectMapper.readValue(files, new TypeReference<List<Attachment>>() {});
+
+        if (!(authentication instanceof UsernamePasswordAuthenticationToken) && googleDriveApiService != null) {
+            OAuthUser oAuthUser = authenticationUtils.getOAuthUserFromAuthentication(authentication);
+            try {
+                if (folderId != null && !folderId.isEmpty()) {
+                    googleDriveApiService.checkFolderExists(oAuthUser, folderId);
+                }
+            } catch (IOException | GeneralSecurityException e) {
+                return "error/500";
+            }
+        }
+
+        Lead createdLead = leadService.save(lead);
+        fileUtil.saveFiles(allFiles, createdLead);
+
+        if (lead.getGoogleDrive() != null) {
+            fileUtil.saveGoogleDriveFiles(authentication, allFiles, folderId, createdLead);
+        }
+
+        if (amount != null) {
+            Depense depense = new Depense();
+            depense.setLead(createdLead);
+            depense.setTicket(null);
+            depense.setDate(Date.valueOf(LocalDateTime.now().toLocalDate()));
+            depense.setValue(amount);
+            try {
+                depenseService.save(depense);
+
+                // Mettre à jour le statut du dernier budget
+                int percentageThreshold = configurationService.getPercentageByType("budget_threshold");
+                financeService.updateThresholdExceededStatus(customerId, percentageThreshold);
+            } catch (IllegalArgumentException e) {
+                redirectAttributes.addAttribute("error", "Error creating expense: " + e.getMessage());
+                return "redirect:/employee/lead/create";
+            }
+        }
+
+        if (lead.getStatus().equals("meeting-to-schedule")) {
+            return "redirect:/employee/calendar/create-event?leadId=" + lead.getLeadId();
+        }
+        if (AuthorizationUtil.hasRole(authentication, "ROLE_MANAGER")) {
             return "redirect:/employee/lead/created-leads";
         }
         return "redirect:/employee/lead/assigned-leads";
@@ -291,6 +468,10 @@ public class LeadController {
             }
         }
 
+        // Ajout de la dépense au modèle
+        Depense depense = depenseService.findByLead(lead);
+        model.addAttribute("depense", depense);
+
         model.addAttribute("lead", lead);
         model.addAttribute("employees", employees);
         model.addAttribute("customers", customers);
@@ -301,55 +482,61 @@ public class LeadController {
     }
 
     @PostMapping("/update")
-    public String updateLead(@ModelAttribute("lead") @Validated Lead lead, BindingResult bindingResult, @RequestParam("customerId") int customerId,
-                             @RequestParam("employeeId") int employeeId, Authentication authentication, Model model,
-                             @RequestParam("allFiles") @Nullable String files, @RequestParam("folderId") @Nullable String folderId) throws JsonProcessingException {
+    public String updateLead(@ModelAttribute("lead") @Validated Lead lead, BindingResult bindingResult,
+                             @RequestParam("customerId") int customerId, @RequestParam("employeeId") int employeeId,
+                             @RequestParam(value = "amount", required = false) Double amount, // Ajout du montant
+                             Authentication authentication, Model model,
+                             @RequestParam("allFiles") @Nullable String files, @RequestParam("folderId") @Nullable String folderId,
+                             RedirectAttributes redirectAttributes) throws JsonProcessingException {
 
         int userId = authenticationUtils.getLoggedInUserId(authentication);
         User loggedInUser = userService.findById(userId);
-        if(loggedInUser.isInactiveUser()) {
+        if (loggedInUser.isInactiveUser()) {
             return "error/account-inactive";
         }
         Lead currLead = leadService.findByLeadId(lead.getLeadId());
-        if(currLead == null) {
+        if (currLead == null) {
             return "error/500";
         }
 
         User manager = currLead.getManager();
         User employee = userService.findById(employeeId);
         Customer customer = customerService.findByCustomerId(customerId);
-        if(employee == null || manager == null || customer == null) {
+        if (employee == null || manager == null || customer == null) {
             return "error/500";
         }
 
-        //check in case the employee created a lead for him/her self,
-        // they won't be able to assign lead for customer that isn't created themselves
-        if(manager.getId() == employeeId) {
+        // Validation des autorisations
+        if (manager.getId() == employeeId) {
             if (!AuthorizationUtil.hasRole(authentication, "ROLE_MANAGER") && customer.getUser().getId() != userId) {
                 return "error/500";
             }
         } else {
-            if(!AuthorizationUtil.hasRole(authentication, "ROLE_MANAGER") && currLead.getCustomer().getCustomerId() != customerId) {
+            if (!AuthorizationUtil.hasRole(authentication, "ROLE_MANAGER") && currLead.getCustomer().getCustomerId() != customerId) {
                 return "error/500";
             }
         }
 
-        if(AuthorizationUtil.hasRole(authentication, "ROLE_EMPLOYEE") && employee.getId() != userId) {
+        if (AuthorizationUtil.hasRole(authentication, "ROLE_EMPLOYEE") && employee.getId() != userId) {
             return "error/500";
         }
 
-        if(bindingResult.hasErrors()) {
+        // Validation du montant (si fourni)
+        if (amount != null && amount <= 0) {
+            redirectAttributes.addAttribute("errorAmount", "Amount must be greater than 0");
+            return "redirect:/employee/lead/update-lead/" + lead.getLeadId();
+        }
+
+        if (bindingResult.hasErrors()) {
             List<User> employees = new ArrayList<>();
             List<Customer> customers = new ArrayList<>();
 
-            if(AuthorizationUtil.hasRole(authentication, "ROLE_MANAGER")) {
+            if (AuthorizationUtil.hasRole(authentication, "ROLE_MANAGER")) {
                 employees = userService.findAll();
                 customers = customerService.findAll();
             } else {
                 employees.add(loggedInUser);
-                //In case Employee's manager assign lead for the employee with a customer that's not created by this employee
-                //As a result of that the employee mustn't change the customer
-                if(!Objects.equals(employee.getId(), lead.getManager().getId())) {
+                if (!Objects.equals(employee.getId(), lead.getManager().getId())) {
                     customers.add(lead.getCustomer());
                 } else {
                     customers = customerService.findByUserId(loggedInUser.getId());
@@ -370,7 +557,6 @@ public class LeadController {
             }
 
             List<GoogleDriveFolder> folders = null;
-
             boolean hasGoogleDriveAccess = false;
             if (!(authentication instanceof UsernamePasswordAuthenticationToken) && googleDriveApiService != null) {
                 OAuthUser oAuthUser = authenticationUtils.getOAuthUserFromAuthentication(authentication);
@@ -380,10 +566,7 @@ public class LeadController {
                     if (hasGoogleDriveAccess) {
                         folders = googleDriveApiService.listFolders(oAuthUser);
                     }
-
-                    // Check if the file got deleted using his Google Drive
-                    fileUtil.updateFilesBasedOnGoogleDriveFiles(oAuthUser,googleDriveFiles,tempLead);
-
+                    fileUtil.updateFilesBasedOnGoogleDriveFiles(oAuthUser, googleDriveFiles, tempLead);
                 } catch (IOException | GeneralSecurityException e) {
                     throw new RuntimeException(e);
                 }
@@ -392,22 +575,21 @@ public class LeadController {
             model.addAttribute("customers", customers);
             model.addAttribute("attachments", attachments);
             model.addAttribute("folders", folders);
-            model.addAttribute("hasGoogleDriveAccess",hasGoogleDriveAccess);
+            model.addAttribute("hasGoogleDriveAccess", hasGoogleDriveAccess);
             return "lead/update-lead";
         }
 
         Lead prevLead = leadService.findByLeadId(lead.getLeadId());
         Lead originalLead = new Lead();
-        BeanUtils.copyProperties(prevLead,originalLead);
+        BeanUtils.copyProperties(prevLead, originalLead);
         List<File> oldFiles = fileService.findByLeadId(lead.getLeadId());
         List<GoogleDriveFile> oldGoogleDriveFiles = new ArrayList<>();
-        if(googleDriveFileService != null) {
+        if (googleDriveFileService != null) {
             oldGoogleDriveFiles = googleDriveFileService.getAllDriveFileByLeadId(lead.getLeadId());
         }
 
         ObjectMapper objectMapper = new ObjectMapper();
-        List<Attachment> allFiles = objectMapper.readValue(files, new TypeReference<List<Attachment>>() {
-        });
+        List<Attachment> allFiles = objectMapper.readValue(files, new TypeReference<List<Attachment>>() {});
 
         lead.setCustomer(customer);
         lead.setEmployee(employee);
@@ -419,7 +601,7 @@ public class LeadController {
             fileUtil.deleteGoogleDriveFiles(oldGoogleDriveFiles, authentication);
         }
         fileUtil.saveFiles(allFiles, lead);
-        if(!(authentication instanceof UsernamePasswordAuthenticationToken) && lead.getGoogleDrive() && googleDriveApiService != null) {
+        if (!(authentication instanceof UsernamePasswordAuthenticationToken) && lead.getGoogleDrive() && googleDriveApiService != null) {
             OAuthUser oAuthUser = authenticationUtils.getOAuthUserFromAuthentication(authentication);
             try {
                 if (folderId != null && !folderId.isEmpty()) {
@@ -428,18 +610,45 @@ public class LeadController {
             } catch (IOException | GeneralSecurityException e) {
                 return "error/500";
             }
-            fileUtil.saveGoogleDriveFiles(authentication,allFiles,folderId,lead);
+            fileUtil.saveGoogleDriveFiles(authentication, allFiles, folderId, lead);
         }
-        Lead CurrentLead = leadService.save(lead);
+        Lead currentLead = leadService.save(lead);
         saveLeadActions(lead, prevLead);
+
+        // Gestion de la dépense associée
+        Depense existingDepense = depenseService.findByLead(currentLead);
+        if (amount != null) {
+            if (existingDepense != null) {
+                // Mise à jour de la dépense existante
+                existingDepense.setValue(amount);
+                existingDepense.setDate(Date.valueOf(LocalDateTime.now().toLocalDate())); // Optionnel : mettre à jour la date
+                depenseService.save(existingDepense);
+            } else {
+                // Création d’une nouvelle dépense
+                Depense newDepense = new Depense();
+                newDepense.setLead(currentLead);
+                newDepense.setTicket(null);
+                newDepense.setDate(Date.valueOf(LocalDateTime.now().toLocalDate()));
+                newDepense.setValue(amount);
+                try {
+                    depenseService.save(newDepense);
+                } catch (IllegalArgumentException e) {
+                    redirectAttributes.addAttribute("error", "Error updating expense: " + e.getMessage());
+                    return "redirect:/employee/lead/update-lead/" + lead.getLeadId();
+                }
+            }
+        } else if (existingDepense != null) {
+            // Si amount est null et qu’une dépense existe, on pourrait la supprimer (optionnel)
+            depenseService.delete(existingDepense.getId());
+        }
+
         List<String> properties = DatabaseUtil.getColumnNames(entityManager, Lead.class);
-        Map<String, Pair<String ,String>> changes = LogEntityChanges.trackChanges(originalLead,CurrentLead, properties);
+        Map<String, Pair<String, String>> changes = LogEntityChanges.trackChanges(originalLead, currentLead, properties);
 
         boolean isGoogleUser = !(authentication instanceof UsernamePasswordAuthenticationToken);
-
-        if(isGoogleUser && googleGmailApiService != null) {
+        if (isGoogleUser && googleGmailApiService != null) {
             OAuthUser oAuthUser = authenticationUtils.getOAuthUserFromAuthentication(authentication);
-            if(oAuthUser.getGrantedScopes().contains(GoogleAccessService.SCOPE_GMAIL)) {
+            if (oAuthUser.getGrantedScopes().contains(GoogleAccessService.SCOPE_GMAIL)) {
                 try {
                     processEmailSettingsChanges(changes, userId, oAuthUser, customer);
                 } catch (NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {
@@ -447,6 +656,8 @@ public class LeadController {
                 }
             }
         }
+
+        redirectAttributes.addFlashAttribute("mess", "Lead updated successfully!");
         return "redirect:/employee/lead/assigned-leads";
     }
 

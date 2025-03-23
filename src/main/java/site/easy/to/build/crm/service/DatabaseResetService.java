@@ -19,6 +19,12 @@ public class DatabaseResetService {
 
     // Liste ordonnée des tables à supprimer, en respectant les contraintes de clés étrangères
     List<String> tableNames = Arrays.asList(
+   "customer",
+        "customer_login_info",
+        "Configuration",
+        "type_config",
+        "budget",
+        "depense",
         "file",
         "google_drive_file",
         "lead_action",

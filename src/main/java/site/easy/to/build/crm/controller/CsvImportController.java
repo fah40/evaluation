@@ -10,12 +10,22 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import site.easy.to.build.crm.util.AuthenticationUtils;
+import org.springframework.security.core.Authentication;
 import site.easy.to.build.crm.service.CsvImportService;
+import site.easy.to.build.crm.service.user.UserService;
 
 @Controller
 @RequestMapping("/csv-import")
 public class CsvImportController {
 
+    @Autowired
+    private UserService userService;
+    
+    @Autowired
+    private AuthenticationUtils authenticationUtils;
+    
     @Autowired
     private CsvImportService csvImportService;
 
@@ -44,12 +54,15 @@ public class CsvImportController {
     @PostMapping("/customers")
     @PreAuthorize("hasRole('ROLE_ADMIN')")
     public String importCustomers(@RequestParam("file") MultipartFile file, 
-                                 Model model, 
-                                 RedirectAttributes redirectAttributes) {
+                                Model model, 
+                                RedirectAttributes redirectAttributes, 
+                                Authentication authentication) {
         try {
-            csvImportService.importCustomersFromCsv(file);
+            // Importation des clients depuis le CSV
+            String link= csvImportService.importCustomersFromCsv(file,authentication,authenticationUtils,userService,redirectAttributes);
+
             redirectAttributes.addFlashAttribute("mess", "Clients importés avec succès !");
-            return "redirect:/";
+            return link; // Redirige vers la page d'importation
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Erreur lors de l'importation des clients : " + e.getMessage());
             e.printStackTrace();

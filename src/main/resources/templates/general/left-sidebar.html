@@ -24,24 +24,8 @@
                             </form>
                         </li>
                     </ul>
-                </li>
-                <li class="nav-small-cap" th:if="${#authorization.expression('hasRole(''ROLE_MANAGER'')')}">--- Reset database</li>
-                <li th:if="${#authorization.expression('hasRole(''ROLE_MANAGER'')')}">
-                    <a class=" waves-effect waves-dark" href="/reset/tables">
-                        <i class="fas fa-cut"></i><i class="fas fa-database"></i>
-                        <span class="hide-menu">Reset DB</span>
-                    </a>
-                </li>
+                </li> 
 
-                <li class="nav-small-cap" th:if="${#authorization.expression('hasRole(''ROLE_MANAGER'')')}">--- Import CSV</li>
-                <li th:if="${#authorization.expression('hasRole(''ROLE_MANAGER'')')}">
-                    <a class=" waves-effect waves-dark" href="/import">
-                        </i><i class="fas fa-file-import"></i>
-                        <span class="hide-menu">Import data</span>
-                    </a>
-                </li>
-
-                <li class="nav-small-cap">--- Settings</li>
                 <li>
                     <a class="has-arrow waves-effect waves-dark" href="javascript:void(0)">
                         <i class="fas fa-cogs"></i>
@@ -57,9 +41,46 @@
                                 <li><a th:href="${home + 'employee/settings/email/ticket'}">Ticket Settings</a></li>
                             </ul>
                         </li>
+                        <li th:if="${#authorization.expression('hasRole(''ROLE_MANAGER'')')}">
+                            <a class=" waves-effect waves-dark" href="/reset/tables">
+                                <i class="fas fa-cut"></i> <i class="fas fa-database"></i>
+                                <span class="hide-menu">Reset DB</span>
+                            </a>
+                        </li>
+                        <li th:if="${#authorization.expression('hasRole(''ROLE_MANAGER'')')}">
+                            <a class=" waves-effect waves-dark" href="/import">
+                                </i><i class="fas fa-file-import"></i>
+                                <span class="hide-menu">Import data</span>
+                            </a>
+                        </li>
+                        <li th:if="${#authorization.expression('hasRole(''ROLE_MANAGER'')')}">
+                            <a class="has-arrow" href="javascript:void(0)"><i class="fas fa-cogs"></i> config</a>
+                            <ul class="collapse">
+                                <li>
+                                    <a href="/type-config/create">
+                                        <span class="hide-menu">create-type</span>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/type-config/list">
+                                        <span class="hide-menu">All-type-config</span>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/config/create">
+                                        <span class="hide-menu">create-config-value</span>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/config/list">
+                                        <span class="hide-menu">All-config</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </li>
                     </ul>
                 </li>
-                <li class="nav-small-cap">--- Google Services</li>
+
                 <li>
                     <a class="has-arrow waves-effect waves-dark" href="javascript:void(0)">
                         <i class="fab fa-google"></i>
@@ -94,7 +115,7 @@
                         </li>
                     </ul>
                 </li>
-                <li th:if="${#authorization.expression('hasRole(''ROLE_MANAGER'')')}" class="nav-small-cap">--- Users</li>
+                
                 <li>
                     <a th:if="${#authorization.expression('hasRole(''ROLE_MANAGER'')')}" class="has-arrow waves-effect waves-dark" href="javascript:void(0)">
                         <i class="fas fa-users"></i>
@@ -105,7 +126,18 @@
                         <li><a th:href="${home + 'manager/register-user'}">Create user</a></li>
                     </ul>
                 </li>
-                <li class="nav-small-cap">--- Customers</li>
+
+                <li>
+                    <a class="has-arrow waves-effect waves-dark" href="javascript:void(0)">
+                        <i class="fas fa-users"></i>
+                        <span class="hide-menu">Depense</span>
+                    </a>
+                    <ul class="collapse">
+                        <li><a href="/depense/list">All depense</a></li>
+                        <li><a href="/depense/create">Add depense</a></li>
+                    </ul>
+                </li>
+                
                 <li>
                     <a class="has-arrow waves-effect waves-dark" href="javascript:void(0)">
                         <i class="fas fa-users"></i>
@@ -115,9 +147,11 @@
                         <li><a th:if="${#authorization.expression('hasRole(''ROLE_MANAGER'')')}" th:href="${home + 'employee/customer/manager/all-customers'}">All customers</a></li>
                         <li><a th:href="${home + 'employee/customer/my-customers'}">My customers</a></li>
                         <li><a th:href="${home + 'employee/customer/create-customer'}">Create customer</a></li>
+                        <li><a href="/budget/list">All budget</a></li>
+                        <li><a href="/budget/create">Add budget</a></li>
                     </ul>
                 </li>
-                <li class="nav-small-cap">--- Tickets</li>
+
                 <li>
                     <a class="has-arrow waves-effect waves-dark" href="javascript:void(0)">
                         <i class="fas fa-ticket-alt"></i>
@@ -130,7 +164,7 @@
                         <li><a th:href="${home + 'employee/ticket/create-ticket'}">Create ticket</a></li>
                     </ul>
                 </li>
-                <li class="nav-small-cap">--- Leads</li>
+
                 <li>
                     <a class="has-arrow waves-effect waves-dark" href="javascript:void(0)">
                         <i class="fas fa-pencil-alt"></i>
@@ -144,7 +178,7 @@
                         <li><a th:href="${home + 'employee/lead/create'}">Create new Lead</a></li>
                     </ul>
                 </li>
-                <li class="nav-small-cap">--- Contracts</li>
+
                 <li>
                     <a class="has-arrow waves-effect waves-dark" href="javascript:void(0)">
                         <i class="fas fa-file-contract"></i>
@@ -157,7 +191,7 @@
                         <li><a th:href="${home + 'employee/contract/create'}">Create new contract</a></li>
                     </ul>
                 </li>
-                <li class="nav-small-cap">--- Email Templates</li>
+
                 <li>
                     <a class="has-arrow waves-effect waves-dark" href="javascript:void(0)">
                         <i class="fas fa-envelope"></i>
@@ -202,7 +236,7 @@
                         </li>
                     </ul>
                 </li>
-                <li class="nav-small-cap">--- Tickets</li>
+
                 <li>
                     <a class="waves-effect waves-dark" th:href="${home + 'customer/my-tickets'}">
                         <i class="fas fa-ticket-alt"></i>
@@ -210,7 +244,6 @@
                     </a>
                 </li>
 
-                <li class="nav-small-cap">--- Leads</li>
                 <li>
                     <a class="waves-effect waves-dark" th:href="${home + 'customer/my-leads'}">
                         <i class="fas fa-pencil-alt"></i>
@@ -218,7 +251,6 @@
                     </a>
                 </li>
 
-                <li class="nav-small-cap">--- Contracts</li>
                 <li>
                     <a class="waves-effect waves-dark" th:href="${home + 'customer/my-contracts'}">
                         <i class="fas fa-file-contract"></i>

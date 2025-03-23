@@ -4,15 +4,29 @@ import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
 import site.easy.to.build.crm.entity.Customer;
+import site.easy.to.build.crm.entity.CustomerLoginInfo;
+import site.easy.to.build.crm.entity.OAuthUser;
 import site.easy.to.build.crm.entity.Role;
 import site.easy.to.build.crm.entity.User;
+import site.easy.to.build.crm.google.service.acess.GoogleAccessService;
+import site.easy.to.build.crm.google.service.gmail.GoogleGmailApiService;
 import site.easy.to.build.crm.repository.CustomerRepository;
 import site.easy.to.build.crm.repository.RoleRepository;
 import site.easy.to.build.crm.repository.UserRepository;
+import site.easy.to.build.crm.service.customer.CustomerLoginInfoService;
+import site.easy.to.build.crm.service.customer.CustomerService;
+import site.easy.to.build.crm.service.user.UserService;
+import site.easy.to.build.crm.util.AuthenticationUtils;
+import site.easy.to.build.crm.util.EmailTokenUtils;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -33,6 +47,20 @@ public class CsvImportService {
 
     @Autowired
     private RoleRepository roleRepository;
+
+    private final CustomerService customerService;
+    private final CustomerLoginInfoService customerLoginInfoService;
+    private final GoogleGmailApiService googleGmailApiService;
+    private final Environment environment;
+
+    @Autowired
+    public CsvImportService(RoleRepository roleRepository, CustomerService customerService, CustomerLoginInfoService customerLoginInfoService, GoogleGmailApiService googleGmailApiService, Environment environment) {
+        this.roleRepository = roleRepository;
+        this.customerService = customerService;
+        this.customerLoginInfoService = customerLoginInfoService;
+        this.googleGmailApiService = googleGmailApiService;
+        this.environment = environment;
+    }
 
     @Transactional
     public void importUsersFromCsv(MultipartFile file) throws Exception {
@@ -91,37 +119,83 @@ public class CsvImportService {
     }
 
     @Transactional
-    public void importCustomersFromCsv(MultipartFile file) throws Exception {
+    public String importCustomersFromCsv(MultipartFile file,Authentication authentication,
+                                                          AuthenticationUtils authenticationUtils,
+                                                          UserService userService,
+                                                          RedirectAttributes redirectAttributes) throws Exception {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()));
              CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withFirstRecordAsHeader())) {
 
-            for (CSVRecord record : csvParser) {
-                Customer customer = new Customer();
-                customer.setName(record.get("name"));
-                customer.setPhone(record.get("phone"));
-                customer.setAddress(record.get("address"));
-                customer.setCity(record.get("city"));
-                customer.setState(record.get("state"));
-                customer.setCountry(record.get("country"));
-                customer.setEmail(record.get("email"));
-                customer.setDescription(record.get("description"));
-                customer.setCreatedAt(LocalDateTime.now());
-
-                // Si vous voulez lier à un user_id existant
-                if (record.isSet("user_id")) {
-                    int userId = Integer.parseInt(record.get("user_id"));
-                    User user = userRepository.findById(userId);
-                    if (user != null) {
-                        customer.setUser(user);
-                    } else {
-                        throw new Exception("User with ID " + userId + " not found");
-                    }
-                }
-
-                customerRepository.save(customer);
+            // Vérification de l'utilisateur connecté
+            int userId = authenticationUtils.getLoggedInUserId(authentication);
+            User user = userService.findById(userId);
+            if (user.isInactiveUser()) {
+                redirectAttributes.addFlashAttribute("error", "Votre compte est inactif.");
+                return "redirect:/";
             }
+
+            // Détection si l'utilisateur est un utilisateur Google (OAuth)
+            boolean isGoogleUser = !(authentication instanceof UsernamePasswordAuthenticationToken);
+            boolean hasGoogleGmailAccess = false;
+            OAuthUser oAuthUser = null;
+            if (isGoogleUser) {
+                oAuthUser = authenticationUtils.getOAuthUserFromAuthentication(authentication);
+                if (oAuthUser.getGrantedScopes().contains(GoogleAccessService.SCOPE_GMAIL)) {
+                    hasGoogleGmailAccess = true;
+                }
+            }
+
+            for (CSVRecord record : csvParser) {
+                saveSingleCustomer(record, user, hasGoogleGmailAccess, oAuthUser);
+                // customerRepository.save(customer);
+            }
+            return "redirect:/";
         } catch (Exception e) {
             throw new Exception("Erreur lors de l'importation des clients : " + e.getMessage(), e);
+        }
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    private void saveSingleCustomer(CSVRecord record, User user, boolean hasGoogleGmailAccess, OAuthUser oAuthUser) throws Exception {
+        Customer customer = new Customer();
+        customer.setName(record.get("name"));
+        customer.setPhone(record.get("phone"));
+        customer.setAddress(record.get("address"));
+        customer.setCity(record.get("city"));
+        customer.setState(record.get("state"));
+        customer.setCountry(record.get("country"));
+        customer.setEmail(record.get("email"));
+        customer.setDescription(record.get("description"));
+        customer.setCreatedAt(LocalDateTime.now());
+        customer.setUser(user);
+
+        // Créer CustomerLoginInfo
+        CustomerLoginInfo customerLoginInfo = new CustomerLoginInfo();
+        customerLoginInfo.setEmail(customer.getEmail());
+        String token = EmailTokenUtils.generateToken();
+        customerLoginInfo.setToken(token);
+        customerLoginInfo.setPasswordSet(false);
+
+        // Sauvegarder CustomerLoginInfo
+        CustomerLoginInfo savedCustomerLoginInfo = customerLoginInfoService.save(customerLoginInfo);
+        customer.setCustomerLoginInfo(savedCustomerLoginInfo);
+
+        // Sauvegarder le client
+        Customer createdCustomer = customerService.save(customer);
+        savedCustomerLoginInfo.setCustomer(createdCustomer);
+        customerLoginInfoService.save(savedCustomerLoginInfo);
+
+        // Envoi d'email si applicable
+        if (hasGoogleGmailAccess && oAuthUser != null && googleGmailApiService != null) {
+            String baseUrl = environment.getProperty("app.base-url");
+            String url = baseUrl + "set-password?token=" + customerLoginInfo.getToken();
+            EmailTokenUtils.sendRegistrationEmail(
+                savedCustomerLoginInfo.getEmail(), 
+                customer.getName(), 
+                url, 
+                oAuthUser, 
+                googleGmailApiService
+            );
         }
     }
 }

@@ -18,7 +18,6 @@ USE `crm`;
 /*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
-
 --
 -- Table structure for table `users`
 ----
@@ -494,6 +493,48 @@ CREATE TABLE IF NOT EXISTS `google_drive_file` (
   CONSTRAINT `google_drive_file_ibfk_1` FOREIGN KEY (`lead_id`) REFERENCES `trigger_lead` (`lead_id`),
   CONSTRAINT `google_drive_file_ibfk_2` FOREIGN KEY (`contract_id`) REFERENCES `trigger_contract` (`contract_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=52 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+
+-- ALEA
+
+CREATE TABLE IF NOT EXISTS `budget` (
+    `id` INT NOT NULL AUTO_INCREMENT,
+    `customer_id` INT UNSIGNED NOT NULL,
+    `date` DATE NOT NULL,
+    `value` DOUBLE NOT NULL CHECK (`value` > 0),
+    PRIMARY KEY (`id`),
+    FOREIGN KEY (`customer_id`) REFERENCES `customer` (`customer_id`)
+);
+
+CREATE TABLE IF NOT EXISTS `depense` (
+    `id` INT NOT NULL AUTO_INCREMENT,
+    `lead_id` INT UNSIGNED DEFAULT NULL,
+    `ticket_id` INT UNSIGNED DEFAULT NULL,
+    `date` DATE NOT NULL,
+    `value` DOUBLE NOT NULL CHECK (`value` > 0),
+    PRIMARY KEY (`id`),
+    FOREIGN KEY (`lead_id`) REFERENCES `trigger_lead` (`lead_id`),
+    FOREIGN KEY (`ticket_id`) REFERENCES `trigger_ticket` (`ticket_id`),
+    CHECK (
+        (`lead_id` IS NOT NULL AND `ticket_id` IS NULL) OR 
+        (`lead_id` IS NULL AND `ticket_id` IS NOT NULL)
+    )
+);
+
+CREATE TABLE IF NOT EXISTS `type_config` (
+    `id` INT NOT NULL AUTO_INCREMENT,
+    `type` VARCHAR(255) NOT NULL,
+    PRIMARY KEY (`id`)
+);
+
+CREATE TABLE IF NOT EXISTS `Configuration` (
+    `id` INT NOT NULL AUTO_INCREMENT,
+    `id_type_config` INT NOT NULL,
+    `value` TEXT NOT NULL,
+    PRIMARY KEY (`id`),
+    FOREIGN KEY (`id_type_config`) REFERENCES `type_config` (`id`)
+);
+
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;

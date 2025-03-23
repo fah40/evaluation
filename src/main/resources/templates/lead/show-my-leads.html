@@ -86,6 +86,7 @@
                                         <th>Customer</th>
                                         <th>Assigned Employee</th>
                                         <th>Show</th>
+                                        <th>Amount</th>
                                         <th>Edit</th>
                                         <th>Delete</th>
                                     </tr>
@@ -99,6 +100,7 @@
                                         <td th:text="${lead.customer.name}"></td>
                                         <td th:text="${lead.employee.username}"></td>
                                         <td><a th:href="${home + 'employee/lead/show/' + lead.leadId}"><i class="fas fa-eye"></i></a></td>
+                                        <td th:text="${leadExpenses[lead.leadId] != null ? leadExpenses[lead.leadId] : 'N/A'}"></td>
                                         <td><a th:href="${home + 'employee/lead/update/' + lead.leadId}"><i class="fas fa-edit"></i></a></td>
                                         <td>
                                             <form th:action="${home + 'employee/lead/delete/' + lead.leadId}" method="post">

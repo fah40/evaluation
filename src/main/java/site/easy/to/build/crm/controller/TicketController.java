@@ -11,11 +11,17 @@ import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
 import site.easy.to.build.crm.entity.*;
 import site.easy.to.build.crm.entity.settings.TicketEmailSettings;
 import site.easy.to.build.crm.google.service.acess.GoogleAccessService;
 import site.easy.to.build.crm.google.service.gmail.GoogleGmailApiService;
+import site.easy.to.build.crm.service.budget.BudgetService;
+import site.easy.to.build.crm.service.budget.FinanceService;
+import site.easy.to.build.crm.service.config.ConfigurationService;
 import site.easy.to.build.crm.service.customer.CustomerService;
+import site.easy.to.build.crm.service.depense.DepenseService;
 import site.easy.to.build.crm.service.settings.TicketEmailSettingsService;
 import site.easy.to.build.crm.service.ticket.TicketService;
 import site.easy.to.build.crm.service.user.UserService;
@@ -27,6 +33,7 @@ import java.lang.reflect.Method;
 import java.security.GeneralSecurityException;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.sql.Date;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,18 +48,27 @@ public class TicketController {
     private final TicketEmailSettingsService ticketEmailSettingsService;
     private final GoogleGmailApiService googleGmailApiService;
     private final EntityManager entityManager;
+    private final DepenseService depenseService;
+    private final FinanceService financeService;
+    private final ConfigurationService configurationService;
+    private final BudgetService budgetService;
 
 
     @Autowired
-    public TicketController(TicketService ticketService, AuthenticationUtils authenticationUtils, UserService userService, CustomerService customerService,
-                            TicketEmailSettingsService ticketEmailSettingsService, GoogleGmailApiService googleGmailApiService, EntityManager entityManager) {
+    public TicketController(ConfigurationService configurationService,FinanceService financeService,TicketService ticketService, AuthenticationUtils authenticationUtils, UserService userService,BudgetService budgetService,
+                            CustomerService customerService, TicketEmailSettingsService ticketEmailSettingsService,
+                            GoogleGmailApiService googleGmailApiService, DepenseService depenseService, EntityManager entityManager) {
         this.ticketService = ticketService;
         this.authenticationUtils = authenticationUtils;
         this.userService = userService;
         this.customerService = customerService;
         this.ticketEmailSettingsService = ticketEmailSettingsService;
         this.googleGmailApiService = googleGmailApiService;
+        this.depenseService = depenseService; // Injection
         this.entityManager = entityManager;
+        this.financeService = financeService;
+        this.configurationService = configurationService;
+        this.budgetService = budgetService;
     }
 
     @GetMapping("/show-ticket/{id}")
@@ -79,7 +95,13 @@ public class TicketController {
     @GetMapping("/manager/all-tickets")
     public String showAllTickets(Model model) {
         List<Ticket> tickets = ticketService.findAll();
-        model.addAttribute("tickets",tickets);
+        Map<Integer, Double> ticketExpenses = new HashMap<>();
+        for (Ticket ticket : tickets) {
+            Depense depense = depenseService.findByTicket(ticket);
+            ticketExpenses.put(ticket.getTicketId(), depense != null ? depense.getValue() : null);
+        }
+        model.addAttribute("tickets", tickets);
+        model.addAttribute("ticketExpenses", ticketExpenses);
         return "ticket/my-tickets";
     }
 
@@ -87,7 +109,13 @@ public class TicketController {
     public String showCreatedTicket(Model model, Authentication authentication) {
         int userId = authenticationUtils.getLoggedInUserId(authentication);
         List<Ticket> tickets = ticketService.findManagerTickets(userId);
-        model.addAttribute("tickets",tickets);
+        Map<Integer, Double> ticketExpenses = new HashMap<>();
+        for (Ticket ticket : tickets) {
+            Depense depense = depenseService.findByTicket(ticket);
+            ticketExpenses.put(ticket.getTicketId(), depense != null ? depense.getValue() : null);
+        }
+        model.addAttribute("tickets", tickets);
+        model.addAttribute("ticketExpenses", ticketExpenses);
         return "ticket/my-tickets";
     }
 
@@ -95,9 +123,16 @@ public class TicketController {
     public String showEmployeeTicket(Model model, Authentication authentication) {
         int userId = authenticationUtils.getLoggedInUserId(authentication);
         List<Ticket> tickets = ticketService.findEmployeeTickets(userId);
-        model.addAttribute("tickets",tickets);
+        Map<Integer, Double> ticketExpenses = new HashMap<>();
+        for (Ticket ticket : tickets) {
+            Depense depense = depenseService.findByTicket(ticket);
+            ticketExpenses.put(ticket.getTicketId(), depense != null ? depense.getValue() : null);
+        }
+        model.addAttribute("tickets", tickets);
+        model.addAttribute("ticketExpenses", ticketExpenses);
         return "ticket/my-tickets";
     }
+
     @GetMapping("/create-ticket")
     public String showTicketCreationForm(Model model, Authentication authentication) {
         int userId = authenticationUtils.getLoggedInUserId(authentication);
@@ -123,23 +158,33 @@ public class TicketController {
     }
 
     @PostMapping("/create-ticket")
-    public String createTicket(@ModelAttribute("ticket") @Validated Ticket ticket, BindingResult bindingResult, @RequestParam("customerId") int customerId,
-                               @RequestParam Map<String, String> formParams, Model model,
-                               @RequestParam("employeeId") int employeeId, Authentication authentication) {
+    public String createTicket(@ModelAttribute("ticket") @Validated Ticket ticket, BindingResult bindingResult, 
+                            @RequestParam("customerId") int customerId,
+                            @RequestParam("amount") Double amount,
+                            @RequestParam Map<String, String> formParams, Model model,
+                            @RequestParam("employeeId") int employeeId, Authentication authentication,
+                            RedirectAttributes redirectAttributes) {
 
         int userId = authenticationUtils.getLoggedInUserId(authentication);
         User manager = userService.findById(userId);
-        if(manager == null) {
+        if (manager == null) {
             return "error/500";
         }
-        if(manager.isInactiveUser()) {
+        if (manager.isInactiveUser()) {
             return "error/account-inactive";
         }
-        if(bindingResult.hasErrors()) {
+
+        // Validation du montant
+        if (amount == null || amount <= 0) {
+            redirectAttributes.addAttribute("error", "Amount must be greater than 0");
+            return "redirect:/employee/ticket/create-ticket";
+        }
+
+        if (bindingResult.hasErrors()) {
             List<User> employees = new ArrayList<>();
             List<Customer> customers;
 
-            if(AuthorizationUtil.hasRole(authentication, "ROLE_MANAGER")) {
+            if (AuthorizationUtil.hasRole(authentication, "ROLE_MANAGER")) {
                 employees = userService.findAll();
                 customers = customerService.findAll();
             } else {
@@ -147,30 +192,152 @@ public class TicketController {
                 customers = customerService.findByUserId(manager.getId());
             }
 
-            model.addAttribute("employees",employees);
-            model.addAttribute("customers",customers);
+            model.addAttribute("employees", employees);
+            model.addAttribute("customers", customers);
             return "ticket/create-ticket";
         }
 
         User employee = userService.findById(employeeId);
         Customer customer = customerService.findByCustomerId(customerId);
 
-        if(employee == null || customer == null) {
+        if (employee == null || customer == null) {
             return "error/500";
         }
-        if(AuthorizationUtil.hasRole(authentication, "ROLE_EMPLOYEE")) {
-            if(userId != employeeId || customer.getUser().getId() != userId) {
+        if (AuthorizationUtil.hasRole(authentication, "ROLE_EMPLOYEE")) {
+            if (userId != employeeId || customer.getUser().getId() != userId) {
                 return "error/500";
             }
         }
 
+        // Vérification du seuil de 80%
+        Double totalBudget = financeService.calculateTotalBudgetByCustomer(customerId);
+        Double totalDepense = financeService.calculateTotalDepenseByCustomer(customerId);
+        Double newTotalDepense = totalDepense + amount;
+        int percentageThreshold = configurationService.getPercentageByType("budget"); // Par exemple
+        double threshold = totalBudget * (percentageThreshold / 100.0);
+
+        System.out.println("budget ========================"+ totalBudget);
+        System.out.println("depense ========================"+ totalDepense);
+
+        if (newTotalDepense > threshold) {
+            List<User> employees = new ArrayList<>();
+            List<Customer> customers;
+    
+            if (AuthorizationUtil.hasRole(authentication, "ROLE_MANAGER")) {
+                employees = userService.findAll();
+                customers = customerService.findAll();
+            } else {
+                employees.add(manager);
+                customers = customerService.findByUserId(manager.getId());
+            }
+    
+            // Ajouter toutes les données nécessaires au modèle
+            model.addAttribute("employees", employees);
+            model.addAttribute("customers", customers);
+            model.addAttribute("ticket", ticket); // Contient déjà subject, status, priority, etc.
+            model.addAttribute("amount", amount);
+            model.addAttribute("employeeId", employeeId);
+            model.addAttribute("customerId", customerId);
+            model.addAttribute("thresholdWarning", 
+                "Warning: The total expenses (" + newTotalDepense + ") will exceed or equal ["+percentageThreshold+"%] of the budget (" + threshold + "). Do you want to proceed?");
+            model.addAttribute("showModal", true);
+            return "ticket/create-ticket";
+        }
+
+        // Insertion si seuil non dépassé
         ticket.setCustomer(customer);
         ticket.setManager(manager);
         ticket.setEmployee(employee);
         ticket.setCreatedAt(LocalDateTime.now());
 
-        ticketService.save(ticket);
+        Ticket savedTicket = ticketService.save(ticket);
 
+        Depense depense = new Depense();
+        depense.setTicket(savedTicket);
+        depense.setLead(null);
+        depense.setDate(Date.valueOf(LocalDateTime.now().toLocalDate()));
+        depense.setValue(amount);
+        try {
+            depenseService.save(depense);
+
+            // Mettre à jour le statut du dernier budget
+            int percentage = configurationService.getPercentageByType("budget_threshold");
+            financeService.updateThresholdExceededStatus(customerId, percentage);
+        } catch (IllegalArgumentException e) {
+            redirectAttributes.addAttribute("error", "Error creating expense: " + e.getMessage());
+            return "redirect:/employee/ticket/create-ticket";
+        }
+
+        if (newTotalDepense == threshold) {
+            redirectAttributes.addFlashAttribute("mess", "the budget alert rate is reached !");
+        }else{
+            redirectAttributes.addFlashAttribute("mess", "Ticket and expense created successfully!");
+        }
+
+        return "redirect:/employee/ticket/assigned-tickets";
+    }
+
+    @PostMapping("/confirm-create-ticket")
+    public String confirmCreateTicket(@RequestParam("subject") String subject,
+                                    @RequestParam("description") String description,
+                                    @RequestParam("status") String status,
+                                    @RequestParam("priority") String priority,
+                                    @RequestParam("customerId") int customerId,
+                                    @RequestParam("amount") Double amount,
+                                    @RequestParam("employeeId") int employeeId,
+                                    @RequestParam("confirm") boolean confirm,
+                                    Authentication authentication, 
+                                    RedirectAttributes redirectAttributes) {
+
+        int userId = authenticationUtils.getLoggedInUserId(authentication);
+        User manager = userService.findById(userId);
+        if (manager == null || manager.isInactiveUser()) {
+            return "error/500";
+        }
+
+        if (!confirm) {
+            redirectAttributes.addFlashAttribute("mess", "Ticket creation cancelled due to budget threshold.");
+            return "redirect:/employee/ticket/create-ticket";
+        }
+
+        User employee = userService.findById(employeeId);
+        Customer customer = customerService.findByCustomerId(customerId);
+
+        if (employee == null || customer == null) {
+            return "error/500";
+        }
+
+        // Construire manuellement le ticket
+        Ticket ticket = new Ticket();
+        ticket.setSubject(subject);
+        ticket.setDescription(description);
+        ticket.setStatus(status);
+        ticket.setPriority(priority);
+        ticket.setCustomer(customer);
+        ticket.setManager(manager);
+        ticket.setEmployee(employee);
+        ticket.setCreatedAt(LocalDateTime.now());
+
+        Ticket savedTicket = ticketService.save(ticket);
+
+        // Création de la dépense associée
+        Depense depense = new Depense();
+        depense.setTicket(savedTicket);
+        depense.setLead(null);
+        depense.setDate(Date.valueOf(LocalDateTime.now().toLocalDate()));
+        depense.setValue(amount);
+        try {
+            depenseService.save(depense);
+
+            // Mettre à jour le statut du dernier budget
+            int percentageThreshold = configurationService.getPercentageByType("budget_threshold");
+            financeService.updateThresholdExceededStatus(customerId, percentageThreshold);
+        } catch (IllegalArgumentException e) {
+            redirectAttributes.addAttribute("error", "Error creating expense: " + e.getMessage());
+            return "redirect:/employee/ticket/create-ticket";
+        }
+
+        redirectAttributes.addFlashAttribute("mess", "Ticket and expense created successfully despite budget threshold!");
         return "redirect:/employee/ticket/assigned-tickets";
     }
 
@@ -209,6 +376,10 @@ public class TicketController {
             }
         }
 
+        // Ajout de la dépense au modèle
+        Depense depense = depenseService.findByTicket(ticket);
+        model.addAttribute("depense", depense);
+
         model.addAttribute("employees",employees);
         model.addAttribute("customers",customers);
         model.addAttribute("ticket", ticket);
@@ -217,8 +388,11 @@ public class TicketController {
 
     @PostMapping("/update-ticket")
     public String updateTicket(@ModelAttribute("ticket") @Validated Ticket ticket, BindingResult bindingResult,
-                               @RequestParam("customerId") int customerId, @RequestParam("employeeId") int employeeId,
-                               Authentication authentication, Model model) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+                               @RequestParam("customerId") int customerId, 
+                               @RequestParam("employeeId") int employeeId,
+                               @RequestParam(value = "amount", required = false) Double amount,
+                               Authentication authentication, Model model,
+                               RedirectAttributes redirectAttributes) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
 
         int userId = authenticationUtils.getLoggedInUserId(authentication);
         User loggedInUser = userService.findById(userId);
@@ -239,6 +413,12 @@ public class TicketController {
 
         if(manager == null || employee ==null || customer == null) {
             return "error/500";
+        }
+
+        // Validation du montant (si fourni)
+        if (amount != null && amount <= 0) {
+            redirectAttributes.addAttribute("errorAmount", "Amount must be greater than 0");
+            return "redirect:/employee/ticket/update-ticket/" + ticket.getTicketId();
         }
 
         if(bindingResult.hasErrors()) {
@@ -285,6 +465,70 @@ public class TicketController {
         ticket.setManager(manager);
         ticket.setEmployee(employee);
         Ticket currentTicket = ticketService.save(ticket);
+
+        if (amount != null) {
+            Double totalBudget = financeService.calculateTotalBudgetByCustomer(customerId);
+            Double totalDepense = financeService.calculateTotalDepenseByCustomer(customerId);
+            Depense existingDepense = depenseService.findByTicket(ticket);
+            Double newTotalDepense = totalDepense - (existingDepense != null ? existingDepense.getValue() : 0) + amount;
+    
+            if (totalBudget == 0) {
+                redirectAttributes.addAttribute("error", "No budget defined for this customer. Please set a budget first.");
+                return "redirect:/employee/ticket/update-ticket/" + ticket.getTicketId();
+            }
+    
+            double threshold = totalBudget * 0.8;
+            if (newTotalDepense >= threshold) {
+                List<User> employees = new ArrayList<>();
+                List<Customer> customers;
+    
+                if (AuthorizationUtil.hasRole(authentication, "ROLE_MANAGER")) {
+                    employees = userService.findAll();
+                    customers = customerService.findAll();
+                } else {
+                    employees.add(loggedInUser);
+                    customers = customerService.findByUserId(loggedInUser.getId());
+                }
+    
+                model.addAttribute("employees", employees);
+                model.addAttribute("customers", customers);
+                model.addAttribute("ticket", ticket);
+                model.addAttribute("amount", amount);
+                model.addAttribute("employeeId", employeeId);
+                model.addAttribute("customerId", customerId);
+                model.addAttribute("thresholdWarning", 
+                    "Warning: The total expenses (" + newTotalDepense + ") will exceed or equal 80% of the budget (" + threshold + "). Do you want to proceed?");
+                model.addAttribute("showModal", true);
+                return "ticket/update-ticket";
+            }
+        }
+
+        // Gestion de la dépense associée
+        Depense existingDepense = depenseService.findByTicket(currentTicket);
+        if (amount != null) {
+            if (existingDepense != null) {
+                // Mise à jour de la dépense existante
+                existingDepense.setValue(amount);
+                existingDepense.setDate(Date.valueOf(LocalDateTime.now().toLocalDate())); // Optionnel : mettre à jour la date
+                depenseService.save(existingDepense);
+            } else {
+                // Création d’une nouvelle dépense
+                Depense newDepense = new Depense();
+                newDepense.setTicket(currentTicket);
+                newDepense.setLead(null);
+                newDepense.setDate(Date.valueOf(LocalDateTime.now().toLocalDate()));
+                newDepense.setValue(amount);
+                try {
+                    depenseService.save(newDepense);
+                } catch (IllegalArgumentException e) {
+                    redirectAttributes.addAttribute("error", "Error updating expense: " + e.getMessage());
+                    return "redirect:/employee/ticket/update-ticket/" + ticket.getTicketId();
+                }
+            }
+        } else if (existingDepense != null) {
+            // Si amount est null et qu’une dépense existe, on pourrait la supprimer (optionnel)
+            depenseService.delete(existingDepense.getId());
+        }
 
         List<String> properties = DatabaseUtil.getColumnNames(entityManager, Ticket.class);
         Map<String, Pair<String,String>> changes = LogEntityChanges.trackChanges(originalTicket,currentTicket,properties);

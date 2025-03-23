@@ -26,9 +26,12 @@ import site.easy.to.build.crm.service.user.UserService;
 import site.easy.to.build.crm.util.AuthenticationUtils;
 import site.easy.to.build.crm.util.AuthorizationUtil;
 import site.easy.to.build.crm.util.EmailTokenUtils;
+import site.easy.to.build.crm.service.budget.FinanceService;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Controller
 @RequestMapping("/employee/customer")
@@ -43,11 +46,15 @@ public class CustomerController {
     private final TicketService ticketService;
     private final ContractService contractService;
     private final LeadService leadService;
+    private final FinanceService financeService;
 
     @Autowired
-    public CustomerController(CustomerService customerService, UserService userService, CustomerLoginInfoService customerLoginInfoService,
-                              AuthenticationUtils authenticationUtils, GoogleGmailApiService googleGmailApiService, Environment environment,
-                              TicketService ticketService, ContractService contractService, LeadService leadService) {
+    public CustomerController(CustomerService customerService, UserService userService, 
+                              CustomerLoginInfoService customerLoginInfoService,
+                              AuthenticationUtils authenticationUtils, GoogleGmailApiService googleGmailApiService, 
+                              Environment environment, TicketService ticketService, 
+                              ContractService contractService, LeadService leadService,
+                              FinanceService financeService) {
         this.customerService = customerService;
         this.userService = userService;
         this.customerLoginInfoService = customerLoginInfoService;
@@ -57,6 +64,7 @@ public class CustomerController {
         this.ticketService = ticketService;
         this.contractService = contractService;
         this.leadService = leadService;
+        this.financeService = financeService;
     }
 
     @GetMapping("/manager/all-customers")
@@ -67,7 +75,18 @@ public class CustomerController {
         } catch (Exception e){
             return "error/500";
         }
-        model.addAttribute("customers",customers);
+
+        Map<Integer, Double> budgetTotals = new HashMap<>();
+        Map<Integer, Double> depenseTotals = new HashMap<>();
+        for (Customer customer : customers) {
+            int customerId = customer.getCustomerId();
+            budgetTotals.put(customerId, financeService.calculateTotalBudgetByCustomer(customerId));
+            depenseTotals.put(customerId, financeService.calculateTotalDepenseByCustomer(customerId));
+        }
+
+        model.addAttribute("customers", customers);
+        model.addAttribute("budgetTotals", budgetTotals);
+        model.addAttribute("depenseTotals", depenseTotals);
         return "customer/all-customers";
     }
 
@@ -80,7 +99,18 @@ public class CustomerController {
             return "error/not-found";
         }
         customers = customerService.findByUserId(userId);
-        model.addAttribute("customers",customers);
+        
+        Map<Integer, Double> budgetTotals = new HashMap<>();
+        Map<Integer, Double> depenseTotals = new HashMap<>();
+        for (Customer customer : customers) {
+            int customerId = customer.getCustomerId();
+            budgetTotals.put(customerId, financeService.calculateTotalBudgetByCustomer(customerId));
+            depenseTotals.put(customerId, financeService.calculateTotalDepenseByCustomer(customerId));
+        }
+
+        model.addAttribute("customers", customers);
+        model.addAttribute("budgetTotals", budgetTotals);
+        model.addAttribute("depenseTotals", depenseTotals);
         return "customer/all-customers";
     }
 
