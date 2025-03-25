@@ -12,9 +12,13 @@ import java.util.List;
 
 public interface DepenseRepository extends JpaRepository<Depense, Integer> {
 
-    List<Depense> findByLeadLeadId(int leadId);
+    List<Depense> findAllByLeadLeadId(int leadId);
 
-    List<Depense> findByTicketTicketId(int ticketId);
+    List<Depense> findAllByTicketTicketId(int ticketId);
+    
+    Depense findByLeadLeadId(int leadId);
+
+    Depense findByTicketTicketId(int ticketId);
     
     Depense findByTicket(Ticket ticket);
     

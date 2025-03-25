@@ -39,12 +39,12 @@ public class DepenseService {
         return depenseRepository.findAll();
     }
 
-    public List<Depense> findByLeadId(int leadId) {
-        return depenseRepository.findByLeadLeadId(leadId);
+    public List<Depense> findAllByLeadId(int leadId) {
+        return depenseRepository.findAllByLeadLeadId(leadId);
     }
 
-    public List<Depense> findByTicketId(int ticketId) {
-        return depenseRepository.findByTicketTicketId(ticketId);
+    public List<Depense> findAllByTicketId(int ticketId) {
+        return depenseRepository.findAllByTicketTicketId(ticketId);
     }
 
     public List<Depense> findByDateRange(Date startDate, Date endDate) {

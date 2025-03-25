@@ -23,7 +23,7 @@ public class ConfigurationService {
     }
 
     public Configuration findById(int id) {
-        return configurationRepository.findById(id).orElse(null);
+        return configurationRepository.findById(id);
     }
 
     public Configuration findByTypeConfig(TypeConfig typeconfig) {
